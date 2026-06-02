@@ -166,7 +166,21 @@ function openEmojiPicker(uid, e) {
   if (activeEmojiUserId && activeEmojiUserId !== uid) closeEmojiPicker();
   const picker = document.getElementById('emoji-picker-' + uid);
   activeEmojiUserId = uid;
+  const isOpen = picker.classList.contains('open');
   picker.classList.toggle('open');
+  if (!isOpen) {
+    // position the picker using fixed coords so it never gets clipped
+    const avatar = e.currentTarget;
+    const rect = avatar.getBoundingClientRect();
+    let top = rect.bottom + 6;
+    let left = rect.left + rect.width / 2 - 105; // 105 = half of 210px width
+    // keep inside viewport
+    if (left < 8) left = 8;
+    if (left + 210 > window.innerWidth - 8) left = window.innerWidth - 218;
+    if (top + 180 > window.innerHeight) top = rect.top - 186;
+    picker.style.top = top + 'px';
+    picker.style.left = left + 'px';
+  }
   document.getElementById('emoji-overlay').style.display =
     picker.classList.contains('open') ? 'block' : 'none';
 }

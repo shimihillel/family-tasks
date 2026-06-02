@@ -118,6 +118,7 @@ body {
   transition: border-color 0.15s, transform 0.12s, box-shadow 0.12s;
   position: relative;
   box-shadow: var(--shadow);
+  overflow: visible;
 }
 .home-card:hover {
   border-color: var(--border-hover);
@@ -274,7 +275,7 @@ body {
   flex: 1; padding: 4px 8px;
   border: 1px solid var(--blue);
   border-radius: var(--radius-md);
-  font-size: 14px; font-family: 'Heebo', sans-serif;
+  font-size: 16px; font-family: 'Heebo', sans-serif;
   background: var(--surface); color: var(--text);
 }
 .task-edit-input:focus { outline: none; }
@@ -328,7 +329,7 @@ body {
   flex: 1; padding: 8px 12px;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  font-size: 13px; font-family: 'Heebo', sans-serif;
+  font-size: 16px; font-family: 'Heebo', sans-serif;
   background: var(--surface); color: var(--text);
   transition: border-color 0.15s;
 }
@@ -372,7 +373,7 @@ body {
   flex: 1; padding: 8px 12px;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  font-size: 13px; font-family: 'Heebo', sans-serif;
+  font-size: 16px; font-family: 'Heebo', sans-serif;
   background: var(--bg); color: var(--text);
 }
 .bulk-input-row input:focus { outline: none; border-color: var(--green); }
@@ -393,12 +394,11 @@ body {
 }
 .emoji-picker {
   display: none;
-  position: absolute; top: calc(100% + 6px); left: 50%;
-  transform: translateX(-50%);
+  position: fixed;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  padding: 8px; z-index: 200;
+  padding: 8px; z-index: 500;
   flex-wrap: wrap; gap: 4px; width: 210px;
   box-shadow: 0 8px 24px rgba(0,0,0,0.12);
 }
