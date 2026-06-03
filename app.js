@@ -26,6 +26,16 @@ const DEFAULT_USERS = [
 
 const EMOJI_OPTIONS = ['👩','👨','🧑','👦','🧒','👧','🧔','👱','🧑‍💻','🧑‍🍳','🧑‍🎨','🧑‍🚀','🦊','🐱','🐶','🦁','🐯','🐻','🌸','⭐'];
 
+/*
+  TASK STATUS FLOW:
+  
+  'open'          → משימה פתוחה, לא טופלה
+  'done'          → הילד סימן + הוסיף הערה (אופציונלי). ממתין לאמא
+  'returned'      → אמא החזירה עם הערה. הילד צריך לראות ולסמן שוב
+  'resubmitted'   → הילד סימן שוב אחרי ההחזרה. ממתין לאמא שוב
+  (approved)      → אמא אישרה → המשימה נמחקת
+*/
+
 // ─── STATE ────────────────────────────────────────────────────────────────────
 let USERS = JSON.parse(JSON.stringify(DEFAULT_USERS));
 let tasks = {};
@@ -34,8 +44,7 @@ let activeEmojiUserId = null;
 let bulkSelected = [];
 let dragSrcIndex = null;
 let dragUserId = null;
-// track which task is waiting for a note before confirming
-let pendingNoteTask = null; // { uid, index }
+let pendingCheckTask = null; // { uid, index } — waiting for note input before submitting
 
 // ─── FIREBASE ─────────────────────────────────────────────────────────────────
 function saveTasks() { set(ref(db, 'tasks'), tasks).catch(console.error); }
@@ -44,7 +53,7 @@ function saveUsers() { set(ref(db, 'users'), USERS).catch(console.error); }
 function listenToFirebase() {
   onValue(ref(db, 'tasks'), (snap) => {
     tasks = snap.val() || {};
-    if (pendingNoteTask) return;
+    if (pendingCheckTask) return; // don't interrupt note input
     const s = getCurrentScreen();
     if (s === 'admin') renderAdmin();
     else if (s === 'member') renderMember();
@@ -65,7 +74,7 @@ function getUserTasks(uid) { return tasks[uid] || []; }
 function getProgress(uid) {
   const t = getUserTasks(uid);
   if (!t.length) return { done: 0, total: 0, pct: 0 };
-  const done = t.filter(x => x.doneByUser).length;
+  const done = t.filter(x => x.status && x.status !== 'open').length;
   return { done, total: t.length, pct: Math.round(done / t.length * 100) };
 }
 
@@ -76,13 +85,10 @@ function progressColor(pct) {
 }
 
 function sortedTasks(uid) {
+  const order = { 'resubmitted': 0, 'done': 1, 'returned': 2, 'open': 3 };
   return getUserTasks(uid)
     .map((t, i) => ({ ...t, _i: i }))
-    .sort((a, b) => {
-      if (a.doneByUser && !b.doneByUser) return 1;
-      if (!a.doneByUser && b.doneByUser) return -1;
-      return 0;
-    });
+    .sort((a, b) => (order[a.status||'open']||3) - (order[b.status||'open']||3));
 }
 
 function showScreen(name) {
@@ -99,8 +105,7 @@ function getCurrentScreen() {
 // ─── CONFETTI ─────────────────────────────────────────────────────────────────
 const confettiCanvas = document.getElementById('confetti-canvas');
 const ctx = confettiCanvas.getContext('2d');
-let particles = [];
-let animating = false;
+let particles = [], animating = false;
 
 function resizeCanvas() { confettiCanvas.width = window.innerWidth; confettiCanvas.height = window.innerHeight; }
 window.addEventListener('resize', resizeCanvas);
@@ -111,9 +116,9 @@ function spawnConfetti(x, y) {
   for (let i = 0; i < 12; i++) {
     const angle = (i / 12) * Math.PI * 2 + Math.random() * 0.6;
     const speed = 3 + Math.random() * 5;
-    particles.push({ x, y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed - 3,
-      emoji: emojis[Math.floor(Math.random() * emojis.length)],
-      life: 1, decay: 0.025 + Math.random() * 0.02, size: 16 + Math.random() * 10 });
+    particles.push({ x, y, vx: Math.cos(angle)*speed, vy: Math.sin(angle)*speed-3,
+      emoji: emojis[Math.floor(Math.random()*emojis.length)],
+      life: 1, decay: 0.025+Math.random()*0.02, size: 16+Math.random()*10 });
   }
   if (!animating) animateConfetti();
 }
@@ -137,11 +142,9 @@ function animateConfetti() {
 function openEmojiPicker(uid, e) {
   e.stopPropagation();
   if (activeEmojiUserId && activeEmojiUserId !== uid) closeEmojiPicker();
-
   const picker = document.getElementById('emoji-picker-' + uid);
   const alreadyOpen = picker.classList.contains('open');
   picker.classList.toggle('open');
-
   if (!alreadyOpen) {
     const rect = e.currentTarget.getBoundingClientRect();
     let top = rect.bottom + 8;
@@ -152,12 +155,8 @@ function openEmojiPicker(uid, e) {
     picker.style.top = top + 'px';
     picker.style.left = left + 'px';
     activeEmojiUserId = uid;
-  } else {
-    activeEmojiUserId = null;
-  }
-
-  document.getElementById('emoji-overlay').style.display =
-    picker.classList.contains('open') ? 'block' : 'none';
+  } else { activeEmojiUserId = null; }
+  document.getElementById('emoji-overlay').style.display = picker.classList.contains('open') ? 'block' : 'none';
 }
 
 function closeEmojiPicker() {
@@ -172,26 +171,20 @@ function closeEmojiPicker() {
 function pickEmoji(uid, emoji) {
   const u = USERS.find(x => x.id === uid);
   if (u) u.emoji = emoji;
-  saveUsers();
-  closeEmojiPicker();
-  renderHome();
+  saveUsers(); closeEmojiPicker(); renderHome();
 }
 
 function emojiPickerHTML(uid) {
   return `<div id="emoji-picker-${uid}" class="emoji-picker">
-    ${EMOJI_OPTIONS.map(e =>
-      `<span class="emoji-opt" onclick="event.stopPropagation();pickEmoji('${uid}','${e}')">${e}</span>`
-    ).join('')}
+    ${EMOJI_OPTIONS.map(e => `<span class="emoji-opt" onclick="event.stopPropagation();pickEmoji('${uid}','${e}')">${e}</span>`).join('')}
   </div>`;
 }
 
 // ─── NAVIGATION ───────────────────────────────────────────────────────────────
 function selectUser(id) {
   currentUser = USERS.find(u => u.id === id);
-  if (currentUser.admin) renderAdmin();
-  else renderMember();
+  if (currentUser.admin) renderAdmin(); else renderMember();
 }
-
 function goHome() { currentUser = null; showScreen('home'); renderHome(); }
 
 // ─── HOME ─────────────────────────────────────────────────────────────────────
@@ -199,14 +192,12 @@ function renderHome() {
   const grid = document.getElementById('user-grid');
   const members = USERS.filter(u => !u.admin);
   const adm = USERS.find(u => u.admin);
-
-  // pending = tasks marked done waiting for approval, including admin's own tasks
-  const allPending = USERS.reduce((s, u) =>
-    s + getUserTasks(u.id).filter(t => t.doneByUser).length, 0);
+  const needsAttention = USERS.reduce((s, u) =>
+    s + getUserTasks(u.id).filter(t => t.status === 'done' || t.status === 'resubmitted').length, 0);
 
   const adminCard = `
     <div class="home-card admin-card" onclick="selectUser('${adm.id}')">
-      ${allPending ? '<div class="notif-dot"></div>' : ''}
+      ${needsAttention ? '<div class="notif-dot"></div>' : ''}
       <div class="avatar-wrap">
         <div class="avatar-circle" style="background:${adm.color};border-color:${adm.border}"
           onclick="event.stopPropagation();openEmojiPicker('${adm.id}',event)">${adm.emoji}</div>
@@ -215,8 +206,8 @@ function renderHome() {
       <div class="card-text">
         <div class="card-name">${adm.name} ⭐</div>
         <div class="card-meta">ניהול משפחה</div>
-        <div class="card-info" style="color:${allPending ? '#BA7517' : '#888'}">
-          ${allPending ? `${allPending} ממתינות לאישור` : 'הכל מאושר ✓'}
+        <div class="card-info" style="color:${needsAttention ? '#BA7517' : '#888'}">
+          ${needsAttention ? `${needsAttention} ממתינות לאישור` : 'הכל מאושר ✓'}
         </div>
       </div>
       <i class="ti ti-chevron-left card-chevron"></i>
@@ -225,10 +216,10 @@ function renderHome() {
   const memberCards = members.map(u => {
     const p = getProgress(u.id);
     const col = progressColor(p.pct);
-    const hasPending = getUserTasks(u.id).some(t => t.doneByUser);
+    const hasReturned = getUserTasks(u.id).some(t => t.status === 'returned');
     return `
       <div class="home-card" onclick="selectUser('${u.id}')">
-        ${hasPending ? '<div class="notif-dot"></div>' : ''}
+        ${hasReturned ? '<div class="notif-dot" style="background:#BA7517"></div>' : ''}
         <div class="avatar-wrap">
           <div class="avatar-circle" style="background:${u.color};border-color:${u.border}"
             onclick="event.stopPropagation();openEmojiPicker('${u.id}',event)">${u.emoji}</div>
@@ -236,13 +227,102 @@ function renderHome() {
         </div>
         <div class="card-name">${u.name}</div>
         <div class="card-meta">${p.total ? `${p.done}/${p.total} משימות` : 'אין משימות'}</div>
-        ${p.total ? `<div class="progress-bar-wrap">
-          <div class="progress-bar-fill" style="width:${p.pct}%;background:${col}"></div>
-        </div>` : ''}
+        ${p.total ? `<div class="progress-bar-wrap"><div class="progress-bar-fill" style="width:${p.pct}%;background:${col}"></div></div>` : ''}
       </div>`;
   }).join('');
 
   grid.innerHTML = adminCard + memberCards;
+}
+
+// ─── TASK CARD HTML ───────────────────────────────────────────────────────────
+function taskCardHTML(t, uid, isAdmin) {
+  const status = t.status || 'open';
+  const isPendingCheck = pendingCheckTask && pendingCheckTask.uid === uid && pendingCheckTask.index === t._i;
+  const u = USERS.find(x => x.id === uid);
+
+  // colors per status
+  const statusColors = { open: '', done: '#FAC775', returned: '#F5C4B3', resubmitted: '#B5D4F4' };
+  const borderColor = statusColors[status] || '';
+
+  // status label for admin
+  const statusLabels = {
+    done: `✅ ${u.name} סימן/ה כבוצע`,
+    returned: '↩️ הוחזר לילד',
+    resubmitted: `🔄 ${u.name} סימן/ה שוב`,
+  };
+
+  return `
+    <div class="task-card" id="task-${uid}-${t._i}"
+      style="${borderColor ? `border-color:${borderColor}` : ''}"
+      draggable="${status === 'open' ? 'true' : 'false'}"
+      ondragstart="onDragStart(event,'${uid}',${t._i})"
+      ondragover="onDragOver(event)"
+      ondrop="onDrop(event,'${uid}',${t._i})"
+      ondragend="onDragEnd(event)">
+
+      ${status === 'open' ? '<i class="ti ti-grip-vertical drag-handle"></i>' : '<div style="width:20px"></div>'}
+
+      <div class="burst-wrap">
+        <button class="task-check ${status !== 'open' ? 'checked' : ''}"
+          id="chk-${uid}-${t._i}"
+          onclick="${status === 'open' || status === 'returned' ? `handleCheck('${uid}',${t._i},${isAdmin})` : ''}"
+          style="${status !== 'open' && status !== 'returned' ? 'cursor:default;opacity:0.7' : ''}"
+          aria-label="סמן">
+          ${status !== 'open' ? '<i class="ti ti-check"></i>' : ''}
+        </button>
+      </div>
+
+      <div class="task-text-wrap">
+        <div class="task-text ${status !== 'open' ? 'done' : ''}">${t.text}</div>
+        ${t.addedBy ? `<div class="task-note-display">➕ נוסף על ידי ${t.addedBy}</div>` : ''}
+
+        ${isAdmin && status !== 'open' ? `<div class="task-status-label">${statusLabels[status] || ''}</div>` : ''}
+
+        ${isPendingCheck ? `
+          <div class="task-note-wrap" style="margin-top:8px">
+            <input class="task-note-input" id="note-input-${uid}-${t._i}"
+              placeholder="מה עשית? (אופציונלי)"
+              onkeydown="if(event.key==='Enter')submitDone('${uid}',${t._i},${isAdmin})">
+            <button class="task-note-confirm" onclick="submitDone('${uid}',${t._i},${isAdmin})">שלחי ✓</button>
+          </div>` : ''}
+
+        ${!isPendingCheck && (status === 'done' || status === 'resubmitted') ? `
+          <div class="pingpong-thread">
+            ${t.memberNote ? `<div class="pp-bubble pp-member"><span class="pp-name">${u.name}</span>${t.memberNote}</div>` : `<div class="pp-empty">${u.name} לא הוסיף/ה הערה</div>`}
+            ${t.adminNote ? `<div class="pp-bubble pp-admin"><span class="pp-name">אמא</span>${t.adminNote}</div>` : ''}
+            ${t.memberNote2 ? `<div class="pp-bubble pp-member"><span class="pp-name">${u.name}</span>${t.memberNote2}</div>` : ''}
+            ${isAdmin ? `
+              <div class="pp-actions">
+                <button class="btn-return" onclick="showReturnInput('${uid}',${t._i})">
+                  <i class="ti ti-corner-down-left"></i> החזירי עם הערה
+                </button>
+                <button class="btn-approve-full" onclick="approveTask('${uid}',${t._i})">
+                  <i class="ti ti-circle-check"></i> אשרי
+                </button>
+              </div>
+              <div id="return-wrap-${uid}-${t._i}" class="task-note-wrap" style="display:none;margin-top:6px">
+                <input class="task-note-input" id="return-input-${uid}-${t._i}"
+                  placeholder="כתבי הערה לילד..."
+                  onkeydown="if(event.key==='Enter')submitReturn('${uid}',${t._i})">
+                <button class="task-note-confirm" onclick="submitReturn('${uid}',${t._i})">שלחי</button>
+              </div>` : ''}
+          </div>` : ''}
+
+        ${!isPendingCheck && status === 'returned' && !isAdmin ? `
+          <div class="pingpong-thread">
+            ${t.memberNote ? `<div class="pp-bubble pp-member"><span class="pp-name">${u.name}</span>${t.memberNote}</div>` : ''}
+            ${t.adminNote ? `<div class="pp-bubble pp-admin"><span class="pp-name">אמא</span>${t.adminNote}</div>` : ''}
+            <div class="pp-hint">אמא החזירה את המשימה — סמן/י שוב כשתסיים/י</div>
+          </div>` : ''}
+
+        ${!isAdmin && status === 'open' ? '' : ''}
+      </div>
+
+      <div class="task-actions">
+        ${isAdmin && status === 'open' ? `<button class="task-edit-btn" onclick="startEdit('${uid}',${t._i})"><i class="ti ti-pencil"></i></button>` : ''}
+        ${isAdmin && status === 'open' ? `<button class="task-delete" onclick="deleteTask('${uid}',${t._i})"><i class="ti ti-trash"></i></button>` : ''}
+      </div>
+    </div>`;
 }
 
 // ─── MEMBER VIEW ──────────────────────────────────────────────────────────────
@@ -261,20 +341,17 @@ function renderMember() {
     container.innerHTML = `
       <div style="margin-bottom:1.25rem;">
         <div class="progress-row"><span>${p.done} מתוך ${p.total} בוצעו</span><span>${p.pct}%</span></div>
-        <div class="progress-bar-wrap">
-          <div class="progress-bar-fill" style="width:${p.pct}%;background:${col}"></div>
-        </div>
+        <div class="progress-bar-wrap"><div class="progress-bar-fill" style="width:${p.pct}%;background:${col}"></div></div>
       </div>
       ${sortedTasks(currentUser.id).map(t => taskCardHTML(t, currentUser.id, false)).join('')}`;
   }
 
-  // add task box — add to self or to mom
   const adm = USERS.find(u => u.admin);
   const isSelf = currentUser.admin;
   container.innerHTML += `
     <div class="member-add-box">
       <p>הוסיפי משימה:</p>
-      <div class="add-task-row" style="margin-bottom:8px">
+      <div class="add-task-row" style="margin-bottom:${isSelf ? '0' : '8px'}">
         <input type="text" id="self-task-input" placeholder="משימה לעצמי..."
           onkeydown="if(event.key==='Enter')addSelfTask()">
         <button onclick="addSelfTask()">לי</button>
@@ -288,41 +365,18 @@ function renderMember() {
     </div>`;
 }
 
-function addSelfTask() {
-  const input = document.getElementById('self-task-input');
-  const text = input.value.trim();
-  if (!text) return;
-  const uid = currentUser.id;
-  if (!tasks[uid]) tasks[uid] = [];
-  tasks[uid].push({ text, doneByUser: false, note: '' });
-  input.value = '';
-  saveTasks();
-}
-
-function addTaskToMom() {
-  const input = document.getElementById('mom-task-input');
-  const text = input.value.trim();
-  if (!text) return;
-  const adm = USERS.find(u => u.admin);
-  if (!tasks[adm.id]) tasks[adm.id] = [];
-  tasks[adm.id].push({ text, doneByUser: false, note: '', addedBy: currentUser.name });
-  input.value = '';
-  saveTasks();
-}
-
 // ─── ADMIN VIEW ───────────────────────────────────────────────────────────────
 function renderAdmin() {
   showScreen('admin');
   const container = document.getElementById('admin-content');
-  const allUsers = USERS; // admin sees everyone including herself
+  const allUsers = USERS;
 
   const bulkHtml = `
     <div class="bulk-add-box">
       <p>הוסיפי משימה לכמה בני משפחה בבת אחת:</p>
       <div class="bulk-checkboxes">
-        ${allUsers.map(u => `
-          <div class="bulk-cb ${bulkSelected.includes(u.id) ? 'selected' : ''}"
-            onclick="toggleBulk('${u.id}')">${u.emoji} ${u.name}</div>`).join('')}
+        ${allUsers.map(u => `<div class="bulk-cb ${bulkSelected.includes(u.id) ? 'selected' : ''}"
+          onclick="toggleBulk('${u.id}')">${u.emoji} ${u.name}</div>`).join('')}
       </div>
       <div class="bulk-input-row">
         <input type="text" id="bulk-input" placeholder="שם המשימה..."
@@ -333,7 +387,7 @@ function renderAdmin() {
 
   const membersHtml = allUsers.map((u, idx) => {
     const userTasks = getUserTasks(u.id);
-    const pendingCount = userTasks.filter(t => t.doneByUser).length;
+    const pendingCount = userTasks.filter(t => t.status === 'done' || t.status === 'resubmitted').length;
     const p = getProgress(u.id);
     const col = progressColor(p.pct);
     const sorted = sortedTasks(u.id);
@@ -350,9 +404,7 @@ function renderAdmin() {
             <i class="ti ti-clock" style="font-size:11px"></i> ${pendingCount} ממתינות</span>` : ''}
         </div>
         ${p.total ? `<div class="member-progress">
-          <div class="member-progress-bar">
-            <div class="member-progress-fill" style="width:${p.pct}%;background:${col}"></div>
-          </div>
+          <div class="member-progress-bar"><div class="member-progress-fill" style="width:${p.pct}%;background:${col}"></div></div>
           <span class="member-progress-label">${p.done}/${p.total}</span>
         </div>` : ''}
         ${tasksHtml}
@@ -368,109 +420,39 @@ function renderAdmin() {
   container.innerHTML = bulkHtml + membersHtml;
 }
 
-// ─── TASK CARD HTML ───────────────────────────────────────────────────────────
-function taskCardHTML(t, uid, isAdmin) {
-  const isPendingNote = pendingNoteTask && pendingNoteTask.uid === uid && pendingNoteTask.index === t._i;
-  const msgs = t.messages || []; // array of {from, text, ts}
-
-  const messagesHTML = msgs.map(m => {
-    const isAdminMsg = m.from === 'admin';
-    return `<div class="thread-bubble ${isAdminMsg ? 'thread-admin' : 'thread-member'}">
-      ${!isAdminMsg ? `<span class="thread-sender">${m.from}</span>` : ''}
-      ${m.text}
-    </div>`;
-  }).join('');
-
-  return `
-    <div class="task-card ${t.doneByUser ? 'pending-approval' : ''}" id="task-${uid}-${t._i}"
-      draggable="true"
-      ondragstart="onDragStart(event,'${uid}',${t._i})"
-      ondragover="onDragOver(event)"
-      ondrop="onDrop(event,'${uid}',${t._i})"
-      ondragend="onDragEnd(event)">
-      <i class="ti ti-grip-vertical drag-handle"></i>
-      <div class="burst-wrap">
-        <button class="task-check ${t.doneByUser ? 'checked' : ''}" id="chk-${uid}-${t._i}"
-          onclick="handleCheck('${uid}',${t._i},${isAdmin})" aria-label="סמן">
-          ${t.doneByUser ? '<i class="ti ti-check"></i>' : ''}
-        </button>
-      </div>
-      <div class="task-text-wrap" id="textwrap-${uid}-${t._i}">
-        <div class="task-text ${t.doneByUser ? 'done' : ''}">${t.text}</div>
-        ${t.addedBy ? `<div class="task-note-display">➕ נוסף על ידי ${t.addedBy}</div>` : ''}
-
-        ${isPendingNote ? `
-          <div class="task-note-wrap">
-            <input class="task-note-input" id="note-input-${uid}-${t._i}"
-              placeholder="הוסיפי הערה (אופציונלי)..."
-              onkeydown="if(event.key==='Enter')confirmCheck('${uid}',${t._i},${isAdmin})">
-            <button class="task-note-confirm"
-              onclick="confirmCheck('${uid}',${t._i},${isAdmin})">אישור ✓</button>
-          </div>` : ''}
-
-        ${t.doneByUser && !isPendingNote ? `
-          <div class="task-thread" id="thread-${uid}-${t._i}">
-            ${messagesHTML}
-            <div class="thread-input-row">
-              <input class="task-note-input" id="msg-input-${uid}-${t._i}"
-                placeholder="${isAdmin ? 'כתבי הודעה...' : 'כתבי הודעה לאמא...'}"
-                onkeydown="if(event.key==='Enter')sendMessage('${uid}',${t._i},${isAdmin})">
-              <button class="task-note-confirm" onclick="sendMessage('${uid}',${t._i},${isAdmin})">
-                <i class="ti ti-send"></i>
-              </button>
-            </div>
-            ${isAdmin ? `
-              <button class="btn-approve-full" onclick="approveTask('${uid}',${t._i})">
-                <i class="ti ti-circle-check"></i> סיום ואישור
-              </button>` : ''}
-          </div>` : ''}
-      </div>
-      <div class="task-actions">
-        ${isAdmin && !t.doneByUser ? `<button class="task-edit-btn" onclick="startEdit('${uid}',${t._i})"><i class="ti ti-pencil"></i></button>` : ''}
-        ${isAdmin && !t.doneByUser ? `<button class="task-delete" onclick="deleteTask('${uid}',${t._i})"><i class="ti ti-trash"></i></button>` : ''}
-      </div>
-    </div>`;
-}
-
 // ─── TASK ACTIONS ─────────────────────────────────────────────────────────────
+
+// Step 1: member clicks check → show note input
 function handleCheck(uid, index, isAdmin) {
-  if (!tasks[uid]) return;
-  const wasDone = tasks[uid][index].doneByUser;
+  if (!tasks[uid] || !tasks[uid][index]) return;
+  const status = tasks[uid][index].status || 'open';
+  if (status !== 'open' && status !== 'returned') return;
 
-  if (wasDone) {
-    // uncheck
-    tasks[uid][index].doneByUser = false;
-    tasks[uid][index].note = '';
-    pendingNoteTask = null;
-    saveTasks();
-    isAdmin ? renderAdmin() : renderMember();
-    return;
-  }
-
-  // checking — show note input first
-  pendingNoteTask = { uid, index };
+  pendingCheckTask = { uid, index };
   isAdmin ? renderAdmin() : renderMember();
-
-  // focus the note input
   setTimeout(() => {
     const inp = document.getElementById(`note-input-${uid}-${index}`);
     if (inp) inp.focus();
   }, 50);
 }
 
-function confirmCheck(uid, index, isAdmin) {
+// Step 2: member submits done with optional note
+function submitDone(uid, index, isAdmin) {
   const inp = document.getElementById(`note-input-${uid}-${index}`);
   const note = inp ? inp.value.trim() : '';
+  if (!tasks[uid] || !tasks[uid][index]) return;
 
-  tasks[uid][index].doneByUser = true;
-  tasks[uid][index].messages = note ? [{ from: currentUser.name, text: note, ts: Date.now() }] : [];
-  pendingNoteTask = null;
+  const prevStatus = tasks[uid][index].status || 'open';
+  const noteField = prevStatus === 'returned' ? 'memberNote2' : 'memberNote';
+  tasks[uid][index][noteField] = note;
+  tasks[uid][index].status = prevStatus === 'returned' ? 'resubmitted' : 'done';
+
+  pendingCheckTask = null;
   saveTasks();
 
-  // confetti!
   const btn = document.getElementById(`chk-${uid}-${index}`);
   if (btn) {
-    btn.classList.add('checked', 'pop');
+    btn.classList.add('pop');
     btn.innerHTML = '<i class="ti ti-check"></i>';
     const rect = btn.getBoundingClientRect();
     spawnConfetti(rect.left + rect.width / 2, rect.top + rect.height / 2);
@@ -478,30 +460,29 @@ function confirmCheck(uid, index, isAdmin) {
   setTimeout(() => { isAdmin ? renderAdmin() : renderMember(); }, 700);
 }
 
-function sendMessage(uid, index, isAdmin) {
-  const inp = document.getElementById(`msg-input-${uid}-${index}`);
-  const text = inp ? inp.value.trim() : '';
-  if (!text || !tasks[uid] || !tasks[uid][index]) return;
-  if (!tasks[uid][index].messages) tasks[uid][index].messages = [];
-  const from = isAdmin ? 'admin' : currentUser.name;
-  tasks[uid][index].messages.push({ from, text, ts: Date.now() });
-  inp.value = '';
-  saveTasks();
-  // append message to thread without full re-render
-  const thread = document.getElementById(`thread-${uid}-${index}`);
-  if (thread) {
-    const bubble = document.createElement('div');
-    bubble.className = `thread-bubble ${isAdmin ? 'thread-admin' : 'thread-member'}`;
-    bubble.innerHTML = (!isAdmin ? `<span class="thread-sender">${currentUser.name}</span>` : '') + text;
-    const inputRow = thread.querySelector('.thread-input-row');
-    thread.insertBefore(bubble, inputRow);
-    thread.scrollTop = thread.scrollHeight;
-  }
+// Admin: show return input inline
+function showReturnInput(uid, index) {
+  const wrap = document.getElementById(`return-wrap-${uid}-${index}`);
+  if (!wrap) return;
+  wrap.style.display = 'flex';
+  const inp = document.getElementById(`return-input-${uid}-${index}`);
+  if (inp) inp.focus();
 }
 
+// Admin: submit return with note
+function submitReturn(uid, index) {
+  const inp = document.getElementById(`return-input-${uid}-${index}`);
+  const note = inp ? inp.value.trim() : '';
+  if (!tasks[uid] || !tasks[uid][index]) return;
+  tasks[uid][index].adminNote = note;
+  tasks[uid][index].status = 'returned';
+  saveTasks();
+}
+
+// Admin: approve → task disappears
 function approveTask(userId, index) {
   const el = document.getElementById(`task-${userId}-${index}`);
-  if (el) el.classList.add('removing');
+  if (el) { el.style.opacity = '0'; el.style.transition = 'opacity 0.3s'; }
   setTimeout(() => {
     if (tasks[userId]) tasks[userId].splice(index, 1);
     saveTasks();
@@ -513,7 +494,29 @@ function addTask(userId) {
   const text = input.value.trim();
   if (!text) return;
   if (!tasks[userId]) tasks[userId] = [];
-  tasks[userId].push({ text, doneByUser: false, note: '' });
+  tasks[userId].push({ text, status: 'open', memberNote: '', adminNote: '', memberNote2: '' });
+  input.value = '';
+  saveTasks();
+}
+
+function addSelfTask() {
+  const input = document.getElementById('self-task-input');
+  const text = input.value.trim();
+  if (!text) return;
+  const uid = currentUser.id;
+  if (!tasks[uid]) tasks[uid] = [];
+  tasks[uid].push({ text, status: 'open', memberNote: '', adminNote: '', memberNote2: '' });
+  input.value = '';
+  saveTasks();
+}
+
+function addTaskToMom() {
+  const input = document.getElementById('mom-task-input');
+  const text = input.value.trim();
+  if (!text) return;
+  const adm = USERS.find(u => u.admin);
+  if (!tasks[adm.id]) tasks[adm.id] = [];
+  tasks[adm.id].push({ text, status: 'open', addedBy: currentUser.name, memberNote: '', adminNote: '', memberNote2: '' });
   input.value = '';
   saveTasks();
 }
@@ -526,10 +529,14 @@ function deleteTask(userId, index) {
 function startEdit(uid, index) {
   const wrap = document.getElementById(`textwrap-${uid}-${index}`);
   if (!wrap) return;
-  wrap.innerHTML = `<input class="task-edit-input" value="${tasks[uid][index].text}"
+  const current = tasks[uid][index].text;
+  // replace just the text div
+  const textDiv = wrap.querySelector('.task-text');
+  if (!textDiv) return;
+  textDiv.outerHTML = `<input class="task-edit-input" id="edit-${uid}-${index}" value="${current}"
     onkeydown="if(event.key==='Enter')saveEdit('${uid}',${index},this.value);if(event.key==='Escape')renderAdmin()"
     onblur="saveEdit('${uid}',${index},this.value)">`;
-  wrap.querySelector('input').focus();
+  document.getElementById(`edit-${uid}-${index}`)?.focus();
 }
 
 function saveEdit(uid, index, newText) {
@@ -543,7 +550,7 @@ function toggleBulk(uid) {
   const i = bulkSelected.indexOf(uid);
   if (i > -1) bulkSelected.splice(i, 1); else bulkSelected.push(uid);
   renderAdmin();
-  setTimeout(() => { const el = document.getElementById('bulk-input'); if (el) el.focus(); }, 50);
+  setTimeout(() => { document.getElementById('bulk-input')?.focus(); }, 50);
 }
 
 function addBulkTask() {
@@ -552,7 +559,7 @@ function addBulkTask() {
   if (!text || !bulkSelected.length) return;
   for (const uid of bulkSelected) {
     if (!tasks[uid]) tasks[uid] = [];
-    tasks[uid].push({ text, doneByUser: false, note: '' });
+    tasks[uid].push({ text, status: 'open', memberNote: '', adminNote: '', memberNote2: '' });
   }
   input.value = '';
   saveTasks();
@@ -588,8 +595,9 @@ window.openEmojiPicker = openEmojiPicker;
 window.closeEmojiPicker = closeEmojiPicker;
 window.pickEmoji = pickEmoji;
 window.handleCheck = handleCheck;
-window.confirmCheck = confirmCheck;
-window.sendMessage = sendMessage;
+window.submitDone = submitDone;
+window.showReturnInput = showReturnInput;
+window.submitReturn = submitReturn;
 window.approveTask = approveTask;
 window.addTask = addTask;
 window.addSelfTask = addSelfTask;
