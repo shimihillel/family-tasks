@@ -29,6 +29,163 @@ const EMOJI_OPTIONS = ['👩','👨','🧑','👦','🧒','👧','🧔','👱','
 // ── שני להחליף לקוד שלך ──
 const ADMIN_PIN = '1705';
 
+// ─── RECURRING TASKS ──────────────────────────────────────────────────────────
+// recurring task structure: { id, uid, text, type: 'daily'|'weekly', dayOfWeek: 0-6 (for weekly), lastReset: 'YYYY-MM-DD', status: 'open'|'done'|'returned' }
+
+function getTodayStr() {
+  return new Date().toISOString().split('T')[0]; // 'YYYY-MM-DD'
+}
+
+function getDayOfWeek() {
+  return new Date().getDay(); // 0=sun, 1=mon ... 6=sat
+}
+
+const DAY_NAMES = ['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'];
+
+function saveRecurring(recurring) {
+  set(ref(db, 'recurring'), recurring).catch(console.error);
+}
+
+function shouldResetToday(task) {
+  const today = getTodayStr();
+  if (task.lastReset === today) return false; // already reset today
+  if (task.type === 'daily') return true;
+  if (task.type === 'weekly') return getDayOfWeek() === task.dayOfWeek;
+  return false;
+}
+
+function processRecurringResets(recurring) {
+  let changed = false;
+  recurring.forEach(t => {
+    if (shouldResetToday(t) && t.status !== 'open') {
+      t.status = 'open';
+      t.lastReset = getTodayStr();
+      t.returnNote = '';
+      changed = true;
+    }
+  });
+  return { recurring, changed };
+}
+
+function listenRecurring() {
+  onValue(ref(db, 'recurring'), (snap) => {
+    let recurring = snap.val();
+    if (!recurring) { window._recurring = []; renderRecurringIfVisible(); return; }
+    // convert object to array if needed
+    if (!Array.isArray(recurring)) recurring = Object.values(recurring);
+    // check resets
+    const { recurring: updated, changed } = processRecurringResets(recurring);
+    if (changed) {
+      saveRecurring(updated);
+    }
+    window._recurring = updated;
+    renderRecurringIfVisible();
+  });
+}
+
+function renderRecurringIfVisible() {
+  const s = getCurrentScreen();
+  if (s === 'admin') renderAdmin();
+  else if (s === 'member') renderMember();
+  else renderHome();
+}
+
+function getRecurringForUser(uid) {
+  return (window._recurring || []).filter(t => t.uid === uid);
+}
+
+function addRecurringTask(uid) {
+  const textEl = document.getElementById('rec-text-' + uid);
+  const typeEl = document.getElementById('rec-type-' + uid);
+  const dayEl = document.getElementById('rec-day-' + uid);
+  const text = textEl ? textEl.value.trim() : '';
+  const type = typeEl ? typeEl.value : 'daily';
+  if (!text) return;
+  const recurring = window._recurring || [];
+  const newTask = {
+    id: Date.now() + '-' + Math.random().toString(36).slice(2),
+    uid, text, type,
+    dayOfWeek: type === 'weekly' && dayEl ? parseInt(dayEl.value) : null,
+    status: 'open',
+    lastReset: getTodayStr(),
+  };
+  recurring.push(newTask);
+  saveRecurring(recurring);
+  if (textEl) textEl.value = '';
+}
+
+function deleteRecurringTask(id) {
+  const recurring = (window._recurring || []).filter(t => t.id !== id);
+  window._recurring = recurring;
+  saveRecurring(recurring);
+}
+
+function handleRecurringCheck(id, isAdmin) {
+  const recurring = window._recurring || [];
+  const t = recurring.find(x => x.id === id);
+  if (!t || t.status === 'done') return;
+  t.status = 'done';
+  saveRecurring(recurring);
+  // confetti
+  const btn = document.getElementById('rec-chk-' + id);
+  if (btn) {
+    btn.classList.add('pop');
+    btn.innerHTML = '<i class="ti ti-check"></i>';
+    const rect = btn.getBoundingClientRect();
+    spawnConfetti(rect.left + rect.width / 2, rect.top + rect.height / 2);
+  }
+  setTimeout(() => { isAdmin ? renderAdmin() : renderMember(); }, 700);
+}
+
+function approveRecurringTask(id) {
+  const recurring = window._recurring || [];
+  const t = recurring.find(x => x.id === id);
+  if (!t) return;
+  // don't delete — just mark as done and set lastReset so it won't reset until tomorrow/next week
+  t.status = 'done';
+  t.lastReset = getTodayStr();
+  saveRecurring(recurring);
+}
+
+function returnRecurringTask(id) {
+  const recurring = window._recurring || [];
+  const t = recurring.find(x => x.id === id);
+  if (!t) return;
+  t.status = 'returned';
+  saveRecurring(recurring);
+}
+
+function recurringCardHTML(t, isAdmin) {
+  const status = t.status || 'open';
+  const typeLabel = t.type === 'daily' ? '🔄 יומי' : `📅 שבועי — ${DAY_NAMES[t.dayOfWeek] || ''}`;
+  const borderStyle = status === 'done' ? 'border-color:#FAC775' : status === 'returned' ? 'border-color:#F5C4B3' : 'border-color:rgba(124,111,205,0.3)';
+
+  return `<div class="task-card recurring-card" id="rec-${t.id}" style="${borderStyle}">
+    <div class="burst-wrap">
+      <button class="task-check ${status !== 'open' ? 'checked' : ''}"
+        id="rec-chk-${t.id}"
+        onclick="${status === 'open' || status === 'returned' ? `handleRecurringCheck('${t.id}',${isAdmin})` : ''}"
+        style="${status === 'done' ? 'cursor:default;opacity:0.7' : ''}"
+        aria-label="סמן">
+        ${status !== 'open' ? '<i class="ti ti-check"></i>' : ''}
+      </button>
+    </div>
+    <div class="task-text-wrap">
+      <div class="task-text ${status !== 'open' ? 'done' : ''}">${t.text}</div>
+      <div class="recurring-label">${typeLabel}</div>
+      ${status === 'done' && isAdmin ? `
+        <div class="task-admin-actions">
+          <button class="btn-return" onclick="returnRecurringTask('${t.id}')">↩ החזירי</button>
+          <button class="btn-approve-task" onclick="approveRecurringTask('${t.id}')">✓ אשרי</button>
+        </div>` : ''}
+      ${status === 'returned' && !isAdmin ? `
+        <div class="returned-banner"><i class="ti ti-corner-down-left"></i> אמא החזירה</div>` : ''}
+      ${status === 'done' && !isAdmin ? `<div class="task-small-label">ממתין לאישור אמא...</div>` : ''}
+    </div>
+    ${isAdmin ? `<button class="task-delete" onclick="deleteRecurringTask('${t.id}')"><i class="ti ti-trash"></i></button>` : ''}
+  </div>`;
+}
+
 /*
   TASK STATUS:
   'open'     — פתוחה
@@ -483,6 +640,16 @@ function renderMember() {
       ${sortedTasks(currentUser.id).map(t => taskCardHTML(t, currentUser.id, false)).join('')}`;
   }
 
+  // add recurring tasks section
+  const recTasks = getRecurringForUser(currentUser.id);
+  if (recTasks.length) {
+    const recHTML = `<div class="recurring-section">
+      <div class="recurring-section-title">📌 משימות קבועות</div>
+      ${recTasks.map(t => recurringCardHTML(t, false)).join('')}
+    </div>`;
+    container.innerHTML += recHTML;
+  }
+
   const adm = USERS.find(u => u.admin);
   container.innerHTML += `
     <div class="member-add-box">
@@ -559,6 +726,28 @@ function renderAdmin() {
             onkeydown="if(event.key==='Enter')addTask('${u.id}')">
           <button onclick="addTask('${u.id}')"><i class="ti ti-plus"></i></button>
         </div>
+
+        ${(() => {
+          const recTasks = getRecurringForUser(u.id);
+          return `<div class="recurring-section">
+            <div class="recurring-section-title">📌 משימות קבועות</div>
+            ${recTasks.map(t => recurringCardHTML(t, true)).join('')}
+            <div class="rec-add-row">
+              <input type="text" id="rec-text-${u.id}" placeholder="משימה קבועה ל${u.name}...">
+              <select id="rec-type-${u.id}" class="rec-select" onchange="document.getElementById('rec-day-wrap-${u.id}').style.display=this.value==='weekly'?'flex':'none'">
+                <option value="daily">כל יום</option>
+                <option value="weekly">שבועי</option>
+              </select>
+            </div>
+            <div id="rec-day-wrap-${u.id}" style="display:none;gap:8px;margin-top:6px;align-items:center">
+              <span style="font-size:13px;color:var(--text-muted);font-weight:700">יום:</span>
+              <select id="rec-day-${u.id}" class="rec-select">
+                ${DAY_NAMES.map((d,i) => `<option value="${i}">${d}</option>`).join('')}
+              </select>
+            </div>
+            <button class="rec-add-btn" onclick="addRecurringTask('${u.id}')">+ הוסיפי משימה קבועה</button>
+          </div>`;
+        })()}
       </div>
       ${idx < USERS.length - 1 ? '<hr class="section-divider">' : ''}`;
   }).join('');
@@ -743,6 +932,11 @@ window.goHome = goHome;
 window.openEmojiPicker = openEmojiPicker;
 window.pinKeyPress = pinKeyPress;
 window.closePinModal = closePinModal;
+window.addRecurringTask = addRecurringTask;
+window.deleteRecurringTask = deleteRecurringTask;
+window.handleRecurringCheck = handleRecurringCheck;
+window.approveRecurringTask = approveRecurringTask;
+window.returnRecurringTask = returnRecurringTask;
 window.closeEmojiPicker = closeEmojiPicker;
 window.pickEmoji = pickEmoji;
 window.handleCheck = handleCheck;
@@ -765,6 +959,11 @@ window.toggleDarkMode = toggleDarkMode;
 window.openEmojiPicker = openEmojiPicker;
 window.pinKeyPress = pinKeyPress;
 window.closePinModal = closePinModal;
+window.addRecurringTask = addRecurringTask;
+window.deleteRecurringTask = deleteRecurringTask;
+window.handleRecurringCheck = handleRecurringCheck;
+window.approveRecurringTask = approveRecurringTask;
+window.returnRecurringTask = returnRecurringTask;
 window.closeEmojiPicker = closeEmojiPicker;
 window.pickEmoji = pickEmoji;
 window.sendCollectiveMessage = sendCollectiveMessage;
@@ -799,6 +998,8 @@ function clearCollectiveMessage() {
 
 // ─── INIT ─────────────────────────────────────────────────────────────────────
 initDarkMode();
+window._recurring = [];
 listenToFirebase();
 listenCollectiveMessage();
+listenRecurring();
 renderHome();

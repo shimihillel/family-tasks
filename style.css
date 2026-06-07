@@ -708,3 +708,63 @@ body {
 
 :root.dark .pin-modal-inner { background: var(--surface); }
 :root.dark .pin-key { background: var(--surface2); }
+
+/* ─── RECURRING TASKS ─── */
+.recurring-section {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 2px dashed rgba(124,111,205,0.25);
+}
+
+.recurring-section-title {
+  font-family: 'Fredoka One', cursive;
+  font-size: 14px; color: var(--purple);
+  margin-bottom: 10px; letter-spacing: 0.3px;
+}
+
+.recurring-card {
+  border-color: rgba(124,111,205,0.25) !important;
+  background: rgba(124,111,205,0.04);
+}
+
+.recurring-label {
+  font-size: 11px; font-weight: 700;
+  color: var(--purple); margin-top: 3px; opacity: 0.8;
+}
+
+.rec-add-row {
+  display: flex; gap: 8px; margin-top: 10px;
+}
+
+.rec-add-row input {
+  flex: 1; padding: 9px 12px;
+  background: var(--surface); color: var(--text);
+  border: 2px solid var(--border); border-radius: var(--radius-md);
+  font-size: 16px; font-family: 'Nunito', sans-serif;
+}
+.rec-add-row input:focus { outline: none; border-color: var(--purple); }
+.rec-add-row input::placeholder { color: var(--text-muted); }
+
+.rec-select {
+  padding: 9px 10px;
+  background: var(--surface); color: var(--text);
+  border: 2px solid var(--border); border-radius: var(--radius-md);
+  font-size: 13px; font-family: 'Nunito', sans-serif; font-weight: 700;
+  cursor: pointer;
+}
+.rec-select:focus { outline: none; border-color: var(--purple); }
+
+.rec-add-btn {
+  width: 100%; margin-top: 8px;
+  background: rgba(124,111,205,0.12);
+  border: 2px dashed rgba(124,111,205,0.4);
+  border-radius: var(--radius-md);
+  padding: 9px; font-size: 13px; font-weight: 800;
+  font-family: 'Nunito', sans-serif; color: var(--purple);
+  cursor: pointer; transition: all 0.15s;
+}
+.rec-add-btn:hover { background: var(--purple-light); border-color: var(--purple); }
+
+:root.dark .recurring-card { background: rgba(124,111,205,0.06); }
+:root.dark .rec-add-row input,
+:root.dark .rec-select { background: var(--surface2); }
