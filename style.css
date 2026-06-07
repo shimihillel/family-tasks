@@ -619,3 +619,92 @@ body {
 
 :root.dark .emoji-modal-inner { background: var(--surface); }
 :root.dark .emoji-modal-opt { background: var(--surface2); }
+
+/* ─── PIN MODAL ─── */
+#pin-modal {
+  position: fixed; inset: 0; z-index: 3000;
+  background: rgba(0,0,0,0.55);
+  display: flex; align-items: center; justify-content: center;
+  padding: 1.5rem;
+  animation: fadeIn 0.15s ease;
+}
+
+.pin-modal-inner {
+  background: var(--bg);
+  border-radius: var(--radius-xl);
+  padding: 2rem 1.5rem;
+  width: 100%; max-width: 280px;
+  text-align: center;
+  border: 3px solid var(--border);
+  box-shadow: 0 20px 60px rgba(0,0,0,0.25);
+}
+
+.pin-modal-emoji {
+  font-size: 42px; margin-bottom: 8px;
+}
+
+.pin-modal-title {
+  font-family: 'Fredoka One', cursive;
+  font-size: 22px; color: var(--text); margin-bottom: 4px;
+}
+
+.pin-modal-sub {
+  font-size: 13px; color: var(--text-muted);
+  font-weight: 600; margin-bottom: 1.25rem;
+}
+
+.pin-dots {
+  display: flex; justify-content: center; gap: 14px;
+  margin-bottom: 8px;
+}
+
+.pin-dot {
+  width: 14px; height: 14px; border-radius: 50%;
+  border: 2.5px solid var(--border-hover);
+  transition: all 0.15s;
+}
+.pin-dot.filled {
+  background: var(--purple);
+  border-color: var(--purple);
+  transform: scale(1.15);
+}
+
+.pin-error {
+  font-size: 12px; font-weight: 700;
+  color: var(--red); height: 18px;
+  margin-bottom: 1rem;
+  transition: opacity 0.2s;
+}
+
+.pin-keypad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-bottom: 1rem;
+}
+
+.pin-key {
+  background: var(--surface);
+  border: 2px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 14px;
+  font-family: 'Fredoka One', cursive;
+  font-size: 22px; color: var(--text);
+  cursor: pointer;
+  transition: all 0.12s;
+}
+.pin-key:hover { border-color: var(--purple); background: var(--purple-light); }
+.pin-key:active { transform: scale(0.93); }
+.pin-key-empty { visibility: hidden; }
+
+.pin-cancel {
+  background: none; border: none;
+  font-size: 13px; font-weight: 700;
+  font-family: 'Nunito', sans-serif;
+  color: var(--text-muted); cursor: pointer;
+  text-decoration: underline;
+}
+.pin-cancel:hover { color: var(--text); }
+
+:root.dark .pin-modal-inner { background: var(--surface); }
+:root.dark .pin-key { background: var(--surface2); }

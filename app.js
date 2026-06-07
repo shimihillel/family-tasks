@@ -26,6 +26,9 @@ const DEFAULT_USERS = [
 
 const EMOJI_OPTIONS = ['👩','👨','🧑','👦','🧒','👧','🧔','👱','🧑‍💻','🧑‍🍳','🧑‍🎨','🧑‍🚀','🦊','🐱','🐶','🦁','🐯','🐻','🌸','⭐'];
 
+// ── שני להחליף לקוד שלך ──
+const ADMIN_PIN = '1705';
+
 /*
   TASK STATUS:
   'open'     — פתוחה
@@ -255,9 +258,87 @@ function checkFirstEmoji(uid) {
 
 // ─── NAVIGATION ───────────────────────────────────────────────────────────────
 function selectUser(id) {
-  currentUser = USERS.find(u => u.id === id);
+  const u = USERS.find(x => x.id === id);
+  if (u && u.admin) {
+    showPinModal();
+    return;
+  }
+  currentUser = u;
   checkFirstEmoji(id);
-  if (currentUser.admin) renderAdmin(); else renderMember();
+  renderMember();
+}
+
+function showPinModal() {
+  const existing = document.getElementById('pin-modal');
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'pin-modal';
+  modal.innerHTML = `
+    <div class="pin-modal-inner">
+      <div class="pin-modal-emoji">👩⭐</div>
+      <div class="pin-modal-title">פאנל ניהול</div>
+      <div class="pin-modal-sub">הכניסי קוד כניסה</div>
+      <div class="pin-dots" id="pin-dots">
+        <span class="pin-dot"></span>
+        <span class="pin-dot"></span>
+        <span class="pin-dot"></span>
+        <span class="pin-dot"></span>
+      </div>
+      <div class="pin-error" id="pin-error"></div>
+      <div class="pin-keypad">
+        ${[1,2,3,4,5,6,7,8,9,'','0','⌫'].map(k => `
+          <button class="pin-key ${k==='' ? 'pin-key-empty' : ''}"
+            onclick="pinKeyPress('${k}')">${k}</button>`).join('')}
+      </div>
+      <button class="pin-cancel" onclick="closePinModal()">ביטול</button>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', (e) => { if (e.target === modal) closePinModal(); });
+}
+
+let pinValue = '';
+
+function pinKeyPress(key) {
+  if (key === '⌫') {
+    pinValue = pinValue.slice(0, -1);
+  } else if (key === '' || pinValue.length >= 4) {
+    return;
+  } else {
+    pinValue += key;
+  }
+
+  // update dots
+  const dots = document.querySelectorAll('.pin-dot');
+  dots.forEach((d, i) => d.classList.toggle('filled', i < pinValue.length));
+
+  // check pin when 4 digits entered
+  if (pinValue.length === 4) {
+    setTimeout(() => {
+      if (pinValue === ADMIN_PIN) {
+        currentUser = USERS.find(u => u.admin);
+        closePinModal();
+        renderAdmin();
+      } else {
+        pinValue = '';
+        dots.forEach(d => d.classList.remove('filled'));
+        const err = document.getElementById('pin-error');
+        if (err) {
+          err.textContent = 'קוד שגוי, נסי שוב';
+          setTimeout(() => { if (err) err.textContent = ''; }, 1500);
+        }
+      }
+    }, 100);
+  }
+}
+
+function closePinModal() {
+  pinValue = '';
+  const modal = document.getElementById('pin-modal');
+  if (modal) {
+    modal.style.opacity = '0';
+    setTimeout(() => modal.remove(), 150);
+  }
 }
 function goHome() { currentUser = null; showScreen('home'); renderHome(); }
 
@@ -660,6 +741,8 @@ function onDrop(e, uid, targetIdx) {
 window.selectUser = selectUser;
 window.goHome = goHome;
 window.openEmojiPicker = openEmojiPicker;
+window.pinKeyPress = pinKeyPress;
+window.closePinModal = closePinModal;
 window.closeEmojiPicker = closeEmojiPicker;
 window.pickEmoji = pickEmoji;
 window.handleCheck = handleCheck;
@@ -680,6 +763,8 @@ window.onDragEnd = onDragEnd;
 window.onDrop = onDrop;
 window.toggleDarkMode = toggleDarkMode;
 window.openEmojiPicker = openEmojiPicker;
+window.pinKeyPress = pinKeyPress;
+window.closePinModal = closePinModal;
 window.closeEmojiPicker = closeEmojiPicker;
 window.pickEmoji = pickEmoji;
 window.sendCollectiveMessage = sendCollectiveMessage;
