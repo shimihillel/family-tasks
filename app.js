@@ -29,151 +29,6 @@ const EMOJI_OPTIONS = ['👩','👨','🧑','👦','🧒','👧','🧔','👱','
 // ── שני להחליף לקוד שלך ──
 const ADMIN_PIN = '1705';
 
-// ─── RECURRING TASKS ──────────────────────────────────────────────────────────
-const DAY_NAMES = ['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'];
-
-function getTodayStr() {
-  return new Date().toISOString().split('T')[0];
-}
-
-function getDayOfWeek() {
-  return new Date().getDay();
-}
-
-function listenRecurring() {
-  onValue(ref(db, 'recurring'), (snap) => {
-    const val = snap.val();
-    // normalize to clean array regardless of Firebase storage format
-    let arr = [];
-    if (val) {
-      const raw = Array.isArray(val) ? val : Object.values(val);
-      arr = raw.filter(t => t && t.id && t.uid && t.text);
-    }
-    // check resets
-    const today = getTodayStr();
-    let changed = false;
-    arr.forEach(t => {
-      const needsReset = t.status !== 'open' && (
-        (t.type === 'daily' && t.lastReset !== today) ||
-        (t.type === 'weekly' && getDayOfWeek() === Number(t.dayOfWeek) && t.lastReset !== today)
-      );
-      if (needsReset) { t.status = 'open'; t.lastReset = today; changed = true; }
-    });
-    window._rec = arr;
-    // always re-save as clean indexed object to fix any corrupt format
-    if (changed || (val && !Array.isArray(val))) saveRec();
-    renderRecurringIfVisible();
-  });
-}
-
-function saveRec() {
-  // save as plain object with numeric keys to avoid Firebase array corruption
-  const obj = {};
-  (window._rec || []).forEach((t, i) => { obj[i] = t; });
-  set(ref(db, 'recurring'), obj).catch(console.error);
-}
-
-function renderRecurringIfVisible() {
-  const s = getCurrentScreen();
-  if (s === 'admin') renderAdmin();
-  else if (s === 'member' && currentUser) renderMember();
-  else renderHome();
-}
-
-function getRecurringForUser(uid) {
-  return (window._rec || []).filter(t => t && t.uid === uid);
-}
-
-function addRecurringTask(uid) {
-  const textEl = document.getElementById('rec-text-' + uid);
-  const typeEl = document.getElementById('rec-type-' + uid);
-  const dayEl  = document.getElementById('rec-day-'  + uid);
-  const text = textEl ? textEl.value.trim() : '';
-  const type = typeEl ? typeEl.value : 'daily';
-  if (!text) return;
-  const id = 'r_' + Date.now();
-  if (!window._rec) window._rec = [];
-  window._rec.push({
-    id, uid, text, type,
-    dayOfWeek: type === 'weekly' && dayEl ? parseInt(dayEl.value) : null,
-    status: 'open',
-    lastReset: getTodayStr(),
-  });
-  saveRec();
-  if (textEl) textEl.value = '';
-}
-
-function findRecByID(id) {
-  if (!window._rec) return null;
-  return window._rec.find(t => t && t.id === id) || null;
-}
-
-function recApprove(id) {
-  const t = findRecByID(id);
-  if (!t) return;
-  t.status = 'done';
-  t.lastReset = getTodayStr();
-  saveRec(); // Firebase listener will re-render
-}
-
-function recReturn(id) {
-  const t = findRecByID(id);
-  if (!t) return;
-  t.status = 'returned';
-  saveRec(); // Firebase listener will re-render
-}
-
-function recDelete(id) {
-  if (!window._rec) return;
-  window._rec = window._rec.filter(t => t.id !== id);
-  saveRec(); // Firebase listener will re-render
-}
-
-function recCheck(id, isAdmin) {
-  const t = findRecByID(id);
-  if (!t || t.status === 'done') return;
-  t.status = 'done';
-  saveRec();
-  const btn = document.querySelector(`[data-rid="${id}"].rec-chk`);
-  if (btn) {
-    btn.classList.add('pop', 'checked');
-    btn.innerHTML = '<i class="ti ti-check"></i>';
-    const rect = btn.getBoundingClientRect();
-    spawnConfetti(rect.left + rect.width / 2, rect.top + rect.height / 2);
-  }
-  // Firebase listener will re-render after saveRec
-}
-
-function recurringCardHTML(t, isAdmin) {
-  const status = t.status || 'open';
-  const typeLabel = t.type === 'daily' ? '🔄 יומי' : `📅 שבועי — ${DAY_NAMES[t.dayOfWeek] || ''}`;
-  const border = status === 'done' ? '#FAC775' : status === 'returned' ? '#F5C4B3' : 'rgba(124,111,205,0.3)';
-  const tid = t.id;
-  return `<div class="task-card recurring-card" style="border-color:${border}">
-    <div class="burst-wrap">
-      <button class="task-check ${status !== 'open' ? 'checked' : ''}"
-        id="rec-chk-${tid}"
-        onclick="window.recCheck('${tid}',${isAdmin})"
-        style="${status === 'done' ? 'cursor:default;opacity:0.7' : ''}">
-        ${status !== 'open' ? '<i class="ti ti-check"></i>' : ''}
-      </button>
-    </div>
-    <div class="task-text-wrap">
-      <div class="task-text ${status !== 'open' ? 'done' : ''}">${t.text}</div>
-      <div class="recurring-label">${typeLabel}</div>
-      ${status === 'done' && isAdmin ? `
-        <div class="task-admin-actions">
-          <button class="btn-return" onclick="window.recReturn('${tid}')">↩ החזירי</button>
-          <button class="btn-approve-task" onclick="window.recApprove('${tid}')">✓ אשרי</button>
-        </div>` : ''}
-      ${status === 'returned' && !isAdmin ? `<div class="returned-banner"><i class="ti ti-corner-down-left"></i> אמא החזירה</div>` : ''}
-      ${status === 'done' && !isAdmin ? `<div class="task-small-label">ממתין לאישור אמא...</div>` : ''}
-    </div>
-    ${isAdmin ? `<button class="task-delete" onclick="window.recDelete('${tid}')"><i class="ti ti-trash"></i></button>` : ''}
-  </div>`;
-}
-
-// inline onclick used instead of event delegation
 
 
 /*
@@ -631,16 +486,6 @@ function renderMember() {
       ${sortedTasks(currentUser.id).map(t => taskCardHTML(t, currentUser.id, false)).join('')}`;
   }
 
-  // add recurring tasks section
-  const recTasks = getRecurringForUser(currentUser.id);
-  if (recTasks.length) {
-    const recHTML = `<div class="recurring-section">
-      <div class="recurring-section-title">📌 משימות קבועות</div>
-      ${recTasks.map(t => recurringCardHTML(t, false)).join('')}
-    </div>`;
-    container.innerHTML += recHTML;
-  }
-
   const adm = USERS.find(u => u.admin);
   container.innerHTML += `
     <div class="member-add-box">
@@ -718,27 +563,7 @@ function renderAdmin() {
           <button onclick="addTask('${u.id}')"><i class="ti ti-plus"></i></button>
         </div>
 
-        ${(() => {
-          const recTasks = getRecurringForUser(u.id);
-          return `<div class="recurring-section">
-            <div class="recurring-section-title">📌 משימות קבועות</div>
-            ${recTasks.map(t => recurringCardHTML(t, true)).join('')}
-            <div class="rec-add-row">
-              <input type="text" id="rec-text-${u.id}" placeholder="משימה קבועה ל${u.name}...">
-              <select id="rec-type-${u.id}" class="rec-select" onchange="document.getElementById('rec-day-wrap-${u.id}').style.display=this.value==='weekly'?'flex':'none'">
-                <option value="daily">כל יום</option>
-                <option value="weekly">שבועי</option>
-              </select>
-            </div>
-            <div id="rec-day-wrap-${u.id}" style="display:none;gap:8px;margin-top:6px;align-items:center">
-              <span style="font-size:13px;color:var(--text-muted);font-weight:700">יום:</span>
-              <select id="rec-day-${u.id}" class="rec-select">
-                ${DAY_NAMES.map((d,i) => `<option value="${i}">${d}</option>`).join('')}
-              </select>
-            </div>
-            <button class="rec-add-btn" onclick="addRecurringTask('${u.id}')">+ הוסיפי משימה קבועה</button>
-          </div>`;
-        })()}
+
       </div>
       ${idx < USERS.length - 1 ? '<hr class="section-divider">' : ''}`;
   }).join('');
@@ -952,11 +777,6 @@ window.closeEmojiPicker = closeEmojiPicker;
 window.pickEmoji = pickEmoji;
 window.pinKeyPress = pinKeyPress;
 window.closePinModal = closePinModal;
-window.recApprove = recApprove;
-window.recReturn = recReturn;
-window.recDelete = recDelete;
-window.recCheck = recCheck;
-window.addRecurringTask = addRecurringTask;
 window.handleCheck = handleCheck;
 window.startReturn = startReturn;
 window.submitReturn = submitReturn;
@@ -978,8 +798,6 @@ window.sendCollectiveMessage = sendCollectiveMessage;
 window.clearCollectiveMessage = clearCollectiveMessage;
 
 initDarkMode();
-window._rec = [];
 listenToFirebase();
 listenCollectiveMessage();
-listenRecurring();
 renderHome();
