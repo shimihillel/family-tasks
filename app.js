@@ -70,7 +70,7 @@ function saveRec() {
 function renderRecurringIfVisible() {
   const s = getCurrentScreen();
   if (s === 'admin') renderAdmin();
-  else if (s === 'member') renderMember();
+  else if (s === 'member' && currentUser) renderMember();
   else renderHome();
 }
 
@@ -228,7 +228,7 @@ function listenToFirebase() {
     if (returningTask) return;
     const s = getCurrentScreen();
     if (s === 'admin') renderAdmin();
-    else if (s === 'member') renderMember();
+    else if (s === 'member' && currentUser) renderMember();
     else renderHome();
   });
   onValue(ref(db, 'users'), (snap) => {
@@ -608,6 +608,7 @@ function taskCardHTML(t, uid, isAdmin) {
 
 // ─── MEMBER VIEW ──────────────────────────────────────────────────────────────
 function renderMember() {
+  if (!currentUser) return;
   showScreen('member');
   const u2 = currentUser;
   document.getElementById('member-title').innerHTML =
