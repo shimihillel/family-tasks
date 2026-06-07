@@ -1,0 +1,19 @@
+{
+  "name": "משימות משפחה",
+  "short_name": "משפחה",
+  "description": "אפליקציית משימות משפחתית",
+  "start_url": "/family-tasks/",
+  "display": "standalone",
+  "background_color": "#f0ede4",
+  "theme_color": "#7c6fcd",
+  "dir": "rtl",
+  "lang": "he",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
