@@ -151,10 +151,12 @@ function recurringCardHTML(t, isAdmin) {
   const status = t.status || 'open';
   const typeLabel = t.type === 'daily' ? '🔄 יומי' : `📅 שבועי — ${DAY_NAMES[t.dayOfWeek] || ''}`;
   const border = status === 'done' ? '#FAC775' : status === 'returned' ? '#F5C4B3' : 'rgba(124,111,205,0.3)';
+  const tid = t.id;
   return `<div class="task-card recurring-card" style="border-color:${border}">
     <div class="burst-wrap">
-      <button class="task-check ${status !== 'open' ? 'checked' : ''} rec-chk"
-        data-rid="${t.id}" data-admin="${isAdmin}"
+      <button class="task-check ${status !== 'open' ? 'checked' : ''}"
+        id="rec-chk-${tid}"
+        onclick="window.recCheck('${tid}',${isAdmin})"
         style="${status === 'done' ? 'cursor:default;opacity:0.7' : ''}">
         ${status !== 'open' ? '<i class="ti ti-check"></i>' : ''}
       </button>
@@ -164,27 +166,17 @@ function recurringCardHTML(t, isAdmin) {
       <div class="recurring-label">${typeLabel}</div>
       ${status === 'done' && isAdmin ? `
         <div class="task-admin-actions">
-          <button class="btn-return rec-ret" data-rid="${t.id}">↩ החזירי</button>
-          <button class="btn-approve-task rec-app" data-rid="${t.id}">✓ אשרי</button>
+          <button class="btn-return" onclick="window.recReturn('${tid}')">↩ החזירי</button>
+          <button class="btn-approve-task" onclick="window.recApprove('${tid}')">✓ אשרי</button>
         </div>` : ''}
       ${status === 'returned' && !isAdmin ? `<div class="returned-banner"><i class="ti ti-corner-down-left"></i> אמא החזירה</div>` : ''}
       ${status === 'done' && !isAdmin ? `<div class="task-small-label">ממתין לאישור אמא...</div>` : ''}
     </div>
-    ${isAdmin ? `<button class="task-delete rec-del" data-rid="${t.id}"><i class="ti ti-trash"></i></button>` : ''}
+    ${isAdmin ? `<button class="task-delete" onclick="window.recDelete('${tid}')"><i class="ti ti-trash"></i></button>` : ''}
   </div>`;
 }
 
-// single event delegation for all recurring buttons
-document.addEventListener('click', e => {
-  const app  = e.target.closest('.rec-app');
-  const ret  = e.target.closest('.rec-ret');
-  const del  = e.target.closest('.rec-del');
-  const chk  = e.target.closest('.rec-chk');
-  if (app) { e.stopPropagation(); recApprove(app.dataset.rid); }
-  else if (ret) { e.stopPropagation(); recReturn(ret.dataset.rid); }
-  else if (del) { e.stopPropagation(); recDelete(del.dataset.rid); }
-  else if (chk) { e.stopPropagation(); recCheck(chk.dataset.rid, chk.dataset.admin === 'true'); }
-});
+// inline onclick used instead of event delegation
 
 
 /*
@@ -934,6 +926,10 @@ window.goHome = goHome;
 window.openEmojiPicker = openEmojiPicker;
 window.pinKeyPress = pinKeyPress;
 window.closePinModal = closePinModal;
+window.recApprove = recApprove;
+window.recReturn = recReturn;
+window.recDelete = recDelete;
+window.recCheck = recCheck;
 window.addRecurringTask = addRecurringTask;
 window.closeEmojiPicker = closeEmojiPicker;
 window.pickEmoji = pickEmoji;
@@ -957,6 +953,10 @@ window.toggleDarkMode = toggleDarkMode;
 window.openEmojiPicker = openEmojiPicker;
 window.pinKeyPress = pinKeyPress;
 window.closePinModal = closePinModal;
+window.recApprove = recApprove;
+window.recReturn = recReturn;
+window.recDelete = recDelete;
+window.recCheck = recCheck;
 window.addRecurringTask = addRecurringTask;
 window.closeEmojiPicker = closeEmojiPicker;
 window.pickEmoji = pickEmoji;
