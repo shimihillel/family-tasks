@@ -920,6 +920,33 @@ function onDrop(e, uid, targetIdx) {
   saveTasks();
 }
 
+// ─── COLLECTIVE MESSAGE ──────────────────────────────────────────────────────
+function sendCollectiveMessage() {
+  const input = document.getElementById('collective-input');
+  const text = input ? input.value.trim() : '';
+  if (!text) return;
+  set(ref(db, 'collectiveMessage'), { text, ts: Date.now() }).catch(console.error);
+  if (input) input.value = '';
+}
+
+function clearCollectiveMessage() {
+  set(ref(db, 'collectiveMessage'), null).catch(console.error);
+}
+
+function listenCollectiveMessage() {
+  onValue(ref(db, 'collectiveMessage'), (snap) => {
+    const data = snap.val();
+    const banner = document.getElementById('collective-banner');
+    if (!banner) return;
+    if (data && data.text) {
+      banner.textContent = '📢 ' + data.text;
+      banner.style.display = 'block';
+    } else {
+      banner.style.display = 'none';
+    }
+  });
+}
+
 // ─── INIT ─────────────────────────────────────────────────────────────────────
 window.selectUser = selectUser;
 window.goHome = goHome;
