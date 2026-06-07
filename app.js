@@ -97,49 +97,45 @@ function addRecurringTask(uid) {
   if (textEl) textEl.value = '';
 }
 
+function findRecByID(id) {
+  if (!window._rec) return null;
+  // try direct key first
+  if (window._rec[id]) return window._rec[id];
+  // Firebase may store as array — search by t.id field
+  return Object.values(window._rec).find(t => t && t.id === id) || null;
+}
+
 function recApprove(id) {
-  console.log('recApprove called, id:', id);
-  console.log('_rec keys:', window._rec ? Object.keys(window._rec) : 'null');
-  if (!window._rec) { console.log('_rec is null'); return; }
-  if (!window._rec[id]) { 
-    console.log('id not found in _rec');
-    // try to find by t.id field
-    const match = Object.values(window._rec).find(t => t && t.id === id);
-    if (match) {
-      console.log('found by t.id, key is different — fixing');
-      const key = Object.keys(window._rec).find(k => window._rec[k] && window._rec[k].id === id);
-      window._rec[key].status = 'done';
-      window._rec[key].lastReset = getTodayStr();
-      saveRec();
-      renderAdmin();
-    }
-    return;
-  }
-  window._rec[id].status = 'done';
-  window._rec[id].lastReset = getTodayStr();
+  const t = findRecByID(id);
+  if (!t) return;
+  t.status = 'done';
+  t.lastReset = getTodayStr();
   saveRec();
   renderAdmin();
 }
 
 function recReturn(id) {
-  if (!window._rec || !window._rec[id]) return;
-  window._rec[id].status = 'returned';
+  const t = findRecByID(id);
+  if (!t) return;
+  t.status = 'returned';
   saveRec();
   renderAdmin();
 }
 
 function recDelete(id) {
   if (!window._rec) return;
-  delete window._rec[id];
+  // find key (may differ from id when Firebase stores as array)
+  const key = window._rec[id] ? id : Object.keys(window._rec).find(k => window._rec[k] && window._rec[k].id === id);
+  if (key !== undefined) delete window._rec[key];
   saveRec();
   const s = getCurrentScreen();
   if (s === 'admin') renderAdmin(); else renderMember();
 }
 
 function recCheck(id, isAdmin) {
-  if (!window._rec || !window._rec[id]) return;
-  if (window._rec[id].status === 'done') return;
-  window._rec[id].status = 'done';
+  const t = findRecByID(id);
+  if (!t || t.status === 'done') return;
+  t.status = 'done';
   saveRec();
   const btn = document.querySelector(`[data-rid="${id}"].rec-chk`);
   if (btn) {
