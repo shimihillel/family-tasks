@@ -920,10 +920,12 @@ function onDrop(e, uid, targetIdx) {
   saveTasks();
 }
 
-// ─── EXPOSE GLOBALS ───────────────────────────────────────────────────────────
+// ─── INIT ─────────────────────────────────────────────────────────────────────
 window.selectUser = selectUser;
 window.goHome = goHome;
 window.openEmojiPicker = openEmojiPicker;
+window.closeEmojiPicker = closeEmojiPicker;
+window.pickEmoji = pickEmoji;
 window.pinKeyPress = pinKeyPress;
 window.closePinModal = closePinModal;
 window.recApprove = recApprove;
@@ -931,8 +933,6 @@ window.recReturn = recReturn;
 window.recDelete = recDelete;
 window.recCheck = recCheck;
 window.addRecurringTask = addRecurringTask;
-window.closeEmojiPicker = closeEmojiPicker;
-window.pickEmoji = pickEmoji;
 window.handleCheck = handleCheck;
 window.startReturn = startReturn;
 window.submitReturn = submitReturn;
@@ -950,47 +950,9 @@ window.onDragOver = onDragOver;
 window.onDragEnd = onDragEnd;
 window.onDrop = onDrop;
 window.toggleDarkMode = toggleDarkMode;
-window.openEmojiPicker = openEmojiPicker;
-window.pinKeyPress = pinKeyPress;
-window.closePinModal = closePinModal;
-window.recApprove = recApprove;
-window.recReturn = recReturn;
-window.recDelete = recDelete;
-window.recCheck = recCheck;
-window.addRecurringTask = addRecurringTask;
-window.closeEmojiPicker = closeEmojiPicker;
-window.pickEmoji = pickEmoji;
 window.sendCollectiveMessage = sendCollectiveMessage;
 window.clearCollectiveMessage = clearCollectiveMessage;
 
-// ─── COLLECTIVE MESSAGE ──────────────────────────────────────────────────────
-function sendCollectiveMessage() {
-  const input = document.getElementById('collective-input');
-  const text = input ? input.value.trim() : '';
-  if (!text) return;
-  set(ref(db, 'collectiveMessage'), { text, ts: Date.now() }).catch(console.error);
-  input.value = '';
-}
-
-function listenCollectiveMessage() {
-  onValue(ref(db, 'collectiveMessage'), (snap) => {
-    const data = snap.val();
-    const banner = document.getElementById('collective-banner');
-    if (!banner) return;
-    if (data && data.text) {
-      banner.textContent = '📢 ' + data.text;
-      banner.style.display = 'block';
-    } else {
-      banner.style.display = 'none';
-    }
-  });
-}
-
-function clearCollectiveMessage() {
-  set(ref(db, 'collectiveMessage'), null).catch(console.error);
-}
-
-// ─── INIT ─────────────────────────────────────────────────────────────────────
 initDarkMode();
 window._rec = {};
 listenToFirebase();
