@@ -179,14 +179,84 @@ function animateConfetti() {
 }
 
 // ─── EMOJI PICKER ─────────────────────────────────────────────────────────────
-function openEmojiPicker(uid, e) { e.stopPropagation(); /* disabled for now */ }
-function closeEmojiPicker() {}
-function pickEmoji(uid, emoji) {}
+function openEmojiPicker(uid, e) {
+  if (e) e.stopPropagation();
+  const u = USERS.find(x => x.id === uid);
+  if (!u) return;
+  showEmojiModal(uid, u.name);
+}
+
+function showEmojiModal(uid, name) {
+  // remove existing modal if any
+  const existing = document.getElementById('emoji-modal');
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'emoji-modal';
+  modal.innerHTML = `
+    <div class="emoji-modal-inner">
+      <div class="emoji-modal-header">
+        <span class="emoji-modal-title">בחר/י אמוג'י, ${name}</span>
+        <button class="emoji-modal-close" id="emoji-close-btn">✕</button>
+      </div>
+      <div class="emoji-modal-grid" id="emoji-grid-${uid}"></div>
+    </div>`;
+  document.body.appendChild(modal);
+
+  // populate grid
+  const grid = document.getElementById('emoji-grid-' + uid);
+  const u = USERS.find(x => x.id === uid);
+  EMOJI_OPTIONS.forEach(em => {
+    const btn = document.createElement('button');
+    btn.className = 'emoji-modal-opt' + (u && u.emoji === em ? ' selected' : '');
+    btn.textContent = em;
+    btn.addEventListener('click', () => { pickEmoji(uid, em); });
+    grid.appendChild(btn);
+  });
+
+  // close handlers
+  document.getElementById('emoji-close-btn').addEventListener('click', closeEmojiPicker);
+  modal.addEventListener('click', (e) => { if (e.target === modal) closeEmojiPicker(); });
+}
+
+function closeEmojiPicker() {
+  const modal = document.getElementById('emoji-modal');
+  if (modal) {
+    modal.style.opacity = '0';
+    setTimeout(() => modal.remove(), 150);
+  }
+}
+
+function pickEmoji(uid, emoji) {
+  const u = USERS.find(x => x.id === uid);
+  if (!u) return;
+  u.emoji = emoji;
+  localStorage.setItem('emoji_' + uid, emoji); // save locally too
+  closeEmojiPicker();
+  saveUsers();
+  const s = getCurrentScreen();
+  if (s === 'home') renderHome();
+  else if (s === 'member') renderMember();
+  else if (s === 'admin') renderAdmin();
+}
+
 function emojiPickerHTML(uid) { return ''; }
+
+// Check on first entry if user needs to pick emoji
+function checkFirstEmoji(uid) {
+  const u = USERS.find(x => x.id === uid);
+  if (!u) return;
+  // load saved emoji from localStorage
+  const saved = localStorage.getItem('emoji_' + uid);
+  if (saved) { u.emoji = saved; return; }
+  // first time — show picker after short delay
+  setTimeout(() => showEmojiModal(uid, u.name), 400);
+}
 
 // ─── NAVIGATION ───────────────────────────────────────────────────────────────
 function selectUser(id) {
   currentUser = USERS.find(u => u.id === id);
+  checkFirstEmoji(id);
   if (currentUser.admin) renderAdmin(); else renderMember();
 }
 function goHome() { currentUser = null; showScreen('home'); renderHome(); }
@@ -313,7 +383,8 @@ function taskCardHTML(t, uid, isAdmin) {
 function renderMember() {
   showScreen('member');
   const u2 = currentUser;
-  document.getElementById('member-title').textContent = u2.emoji + ' שלום ' + u2.name + '!';
+  document.getElementById('member-title').innerHTML =
+    `<span style="cursor:pointer" onclick="openEmojiPicker('${u2.id}',null)" title="שנה אמוג'י">${u2.emoji}</span> שלום ${u2.name}!`;
   const container = document.getElementById('member-tasks');
   const empty = document.getElementById('member-empty');
   const userTasks = getUserTasks(currentUser.id);
@@ -608,6 +679,9 @@ window.onDragOver = onDragOver;
 window.onDragEnd = onDragEnd;
 window.onDrop = onDrop;
 window.toggleDarkMode = toggleDarkMode;
+window.openEmojiPicker = openEmojiPicker;
+window.closeEmojiPicker = closeEmojiPicker;
+window.pickEmoji = pickEmoji;
 window.sendCollectiveMessage = sendCollectiveMessage;
 window.clearCollectiveMessage = clearCollectiveMessage;
 

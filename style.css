@@ -552,3 +552,70 @@ body {
   text-decoration: underline;
 }
 .clear-msg-btn:hover { color: var(--red); }
+
+/* ─── EMOJI MODAL ─── */
+#emoji-modal {
+  position: fixed; inset: 0; z-index: 2000;
+  background: rgba(0,0,0,0.5);
+  display: flex; align-items: center; justify-content: center;
+  padding: 1.5rem;
+  animation: fadeIn 0.15s ease;
+}
+@keyframes fadeIn { from{opacity:0} to{opacity:1} }
+
+.emoji-modal-inner {
+  background: var(--bg);
+  border-radius: var(--radius-xl);
+  padding: 1.25rem;
+  width: 100%; max-width: 320px;
+  border: 3px solid var(--border);
+  box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+}
+
+.emoji-modal-header {
+  display: flex; align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+
+.emoji-modal-title {
+  font-family: 'Fredoka One', cursive;
+  font-size: 17px; color: var(--text);
+}
+
+.emoji-modal-close {
+  background: var(--surface2); border: 2px solid var(--border);
+  border-radius: 50%; width: 32px; height: 32px;
+  font-size: 14px; cursor: pointer; color: var(--text-muted);
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.15s;
+}
+.emoji-modal-close:hover { border-color: var(--red); color: var(--red); }
+
+.emoji-modal-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+}
+
+.emoji-modal-opt {
+  background: var(--surface);
+  border: 2.5px solid var(--border);
+  border-radius: 14px;
+  font-size: 28px;
+  padding: 8px 4px;
+  cursor: pointer;
+  transition: transform 0.12s, border-color 0.12s, background 0.12s;
+  line-height: 1;
+  aspect-ratio: 1;
+  display: flex; align-items: center; justify-content: center;
+}
+.emoji-modal-opt:hover { transform: scale(1.2); border-color: var(--purple); }
+.emoji-modal-opt:active { transform: scale(0.95); }
+.emoji-modal-opt.selected {
+  border-color: var(--purple);
+  background: var(--purple-light);
+}
+
+:root.dark .emoji-modal-inner { background: var(--surface); }
+:root.dark .emoji-modal-opt { background: var(--surface2); }
