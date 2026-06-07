@@ -98,7 +98,23 @@ function addRecurringTask(uid) {
 }
 
 function recApprove(id) {
-  if (!window._rec || !window._rec[id]) return;
+  console.log('recApprove called, id:', id);
+  console.log('_rec keys:', window._rec ? Object.keys(window._rec) : 'null');
+  if (!window._rec) { console.log('_rec is null'); return; }
+  if (!window._rec[id]) { 
+    console.log('id not found in _rec');
+    // try to find by t.id field
+    const match = Object.values(window._rec).find(t => t && t.id === id);
+    if (match) {
+      console.log('found by t.id, key is different — fixing');
+      const key = Object.keys(window._rec).find(k => window._rec[k] && window._rec[k].id === id);
+      window._rec[key].status = 'done';
+      window._rec[key].lastReset = getTodayStr();
+      saveRec();
+      renderAdmin();
+    }
+    return;
+  }
   window._rec[id].status = 'done';
   window._rec[id].lastReset = getTodayStr();
   saveRec();
