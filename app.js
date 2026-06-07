@@ -43,6 +43,7 @@ function getDayOfWeek() {
 const DAY_NAMES = ['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'];
 
 function saveRecurring(recurring) {
+  _recurringLocalSave = true;
   set(ref(db, 'recurring'), recurring).catch(console.error);
 }
 
@@ -67,19 +68,26 @@ function processRecurringResets(recurring) {
   return { recurring, changed };
 }
 
+let _recurringLocalSave = false;
+
 function listenRecurring() {
   onValue(ref(db, 'recurring'), (snap) => {
     let recurring = snap.val();
     if (!recurring) { window._recurring = []; renderRecurringIfVisible(); return; }
-    // convert object to array if needed
     if (!Array.isArray(recurring)) recurring = Object.values(recurring);
     // check resets
     const { recurring: updated, changed } = processRecurringResets(recurring);
     if (changed) {
+      window._recurring = updated;
       saveRecurring(updated);
+    } else {
+      // only update from Firebase if we didn't just save locally
+      if (!_recurringLocalSave) {
+        window._recurring = updated;
+        renderRecurringIfVisible();
+      }
+      _recurringLocalSave = false;
     }
-    window._recurring = updated;
-    renderRecurringIfVisible();
   });
 }
 
@@ -138,36 +146,34 @@ function handleRecurringCheck(id, isAdmin) {
 }
 
 function approveRecurringTask(id) {
-  const recurring = window._recurring || [];
-  const t = recurring.find(x => x.id === id);
-  if (!t) return;
-  t.status = 'done';
-  t.lastReset = getTodayStr();
+  const recurring = (window._recurring || []).map(t =>
+    t.id === id ? { ...t, status: 'done', lastReset: getTodayStr() } : t
+  );
   window._recurring = recurring;
-  saveRecurring(recurring);
   renderAdmin();
+  saveRecurring(recurring);
 }
 
 function returnRecurringTask(id) {
-  const recurring = window._recurring || [];
-  const t = recurring.find(x => x.id === id);
-  if (!t) return;
-  t.status = 'returned';
+  const recurring = (window._recurring || []).map(t =>
+    t.id === id ? { ...t, status: 'returned' } : t
+  );
   window._recurring = recurring;
-  saveRecurring(recurring);
   renderAdmin();
+  saveRecurring(recurring);
 }
 
 function recurringCardHTML(t, isAdmin) {
   const status = t.status || 'open';
   const typeLabel = t.type === 'daily' ? '🔄 יומי' : `📅 שבועי — ${DAY_NAMES[t.dayOfWeek] || ''}`;
   const borderStyle = status === 'done' ? 'border-color:#FAC775' : status === 'returned' ? 'border-color:#F5C4B3' : 'border-color:rgba(124,111,205,0.3)';
+  // store id in data attribute to avoid escaping issues
+  const safeId = encodeURIComponent(t.id);
 
-  return `<div class="task-card recurring-card" id="rec-${t.id}" style="${borderStyle}">
+  return `<div class="task-card recurring-card" data-rec-id="${safeId}" style="${borderStyle}">
     <div class="burst-wrap">
-      <button class="task-check ${status !== 'open' ? 'checked' : ''}"
-        id="rec-chk-${t.id}"
-        onclick="${status === 'open' || status === 'returned' ? `handleRecurringCheck('${t.id}',${isAdmin})` : ''}"
+      <button class="task-check ${status !== 'open' ? 'checked' : ''} rec-check-btn"
+        data-rec-id="${safeId}" data-is-admin="${isAdmin}"
         style="${status === 'done' ? 'cursor:default;opacity:0.7' : ''}"
         aria-label="סמן">
         ${status !== 'open' ? '<i class="ti ti-check"></i>' : ''}
@@ -178,16 +184,39 @@ function recurringCardHTML(t, isAdmin) {
       <div class="recurring-label">${typeLabel}</div>
       ${status === 'done' && isAdmin ? `
         <div class="task-admin-actions">
-          <button class="btn-return" onclick="returnRecurringTask('${t.id}')">↩ החזירי</button>
-          <button class="btn-approve-task" onclick="approveRecurringTask('${t.id}')">✓ אשרי</button>
+          <button class="btn-return rec-return-btn" data-rec-id="${safeId}">↩ החזירי</button>
+          <button class="btn-approve-task rec-approve-btn" data-rec-id="${safeId}">✓ אשרי</button>
         </div>` : ''}
       ${status === 'returned' && !isAdmin ? `
         <div class="returned-banner"><i class="ti ti-corner-down-left"></i> אמא החזירה</div>` : ''}
       ${status === 'done' && !isAdmin ? `<div class="task-small-label">ממתין לאישור אמא...</div>` : ''}
     </div>
-    ${isAdmin ? `<button class="task-delete" onclick="deleteRecurringTask('${t.id}')"><i class="ti ti-trash"></i></button>` : ''}
+    ${isAdmin ? `<button class="task-delete rec-delete-btn" data-rec-id="${safeId}"><i class="ti ti-trash"></i></button>` : ''}
   </div>`;
 }
+
+// event delegation for recurring buttons
+document.addEventListener('click', (e) => {
+  const approveBtn = e.target.closest('.rec-approve-btn');
+  const returnBtn  = e.target.closest('.rec-return-btn');
+  const deleteBtn  = e.target.closest('.rec-delete-btn');
+  const checkBtn   = e.target.closest('.rec-check-btn');
+
+  if (approveBtn) {
+    const id = decodeURIComponent(approveBtn.dataset.recId);
+    approveRecurringTask(id);
+  } else if (returnBtn) {
+    const id = decodeURIComponent(returnBtn.dataset.recId);
+    returnRecurringTask(id);
+  } else if (deleteBtn) {
+    const id = decodeURIComponent(deleteBtn.dataset.recId);
+    deleteRecurringTask(id);
+  } else if (checkBtn) {
+    const id = decodeURIComponent(checkBtn.dataset.recId);
+    const isAdmin = checkBtn.dataset.isAdmin === 'true';
+    handleRecurringCheck(id, isAdmin);
+  }
+});
 
 /*
   TASK STATUS:
