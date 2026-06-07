@@ -141,10 +141,11 @@ function approveRecurringTask(id) {
   const recurring = window._recurring || [];
   const t = recurring.find(x => x.id === id);
   if (!t) return;
-  // don't delete — just mark as done and set lastReset so it won't reset until tomorrow/next week
   t.status = 'done';
   t.lastReset = getTodayStr();
+  window._recurring = recurring;
   saveRecurring(recurring);
+  renderAdmin();
 }
 
 function returnRecurringTask(id) {
@@ -152,7 +153,9 @@ function returnRecurringTask(id) {
   const t = recurring.find(x => x.id === id);
   if (!t) return;
   t.status = 'returned';
+  window._recurring = recurring;
   saveRecurring(recurring);
+  renderAdmin();
 }
 
 function recurringCardHTML(t, isAdmin) {
