@@ -113,24 +113,20 @@ function recApprove(id) {
   if (!t) return;
   t.status = 'done';
   t.lastReset = getTodayStr();
-  saveRec();
-  renderAdmin();
+  saveRec(); // Firebase listener will re-render
 }
 
 function recReturn(id) {
   const t = findRecByID(id);
   if (!t) return;
   t.status = 'returned';
-  saveRec();
-  renderAdmin();
+  saveRec(); // Firebase listener will re-render
 }
 
 function recDelete(id) {
   if (!window._rec) return;
   window._rec = window._rec.filter(t => t.id !== id);
-  saveRec();
-  const s = getCurrentScreen();
-  if (s === 'admin') renderAdmin(); else renderMember();
+  saveRec(); // Firebase listener will re-render
 }
 
 function recCheck(id, isAdmin) {
@@ -145,7 +141,7 @@ function recCheck(id, isAdmin) {
     const rect = btn.getBoundingClientRect();
     spawnConfetti(rect.left + rect.width / 2, rect.top + rect.height / 2);
   }
-  setTimeout(() => { if (isAdmin) renderAdmin(); else renderMember(); }, 700);
+  // Firebase listener will re-render after saveRec
 }
 
 function recurringCardHTML(t, isAdmin) {
