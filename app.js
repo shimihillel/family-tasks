@@ -43,28 +43,34 @@ function getDayOfWeek() {
 function listenRecurring() {
   onValue(ref(db, 'recurring'), (snap) => {
     const val = snap.val();
-    if (!val) { window._rec = {}; renderRecurringIfVisible(); return; }
-    // Firebase stores as object — use as-is
-    const obj = typeof val === 'object' && !Array.isArray(val) ? val : {};
+    // normalize to clean array regardless of Firebase storage format
+    let arr = [];
+    if (val) {
+      const raw = Array.isArray(val) ? val : Object.values(val);
+      arr = raw.filter(t => t && t.id && t.uid && t.text);
+    }
     // check resets
-    let changed = false;
     const today = getTodayStr();
-    Object.values(obj).forEach(t => {
-      if (!t) return;
+    let changed = false;
+    arr.forEach(t => {
       const needsReset = t.status !== 'open' && (
         (t.type === 'daily' && t.lastReset !== today) ||
-        (t.type === 'weekly' && getDayOfWeek() === t.dayOfWeek && t.lastReset !== today)
+        (t.type === 'weekly' && getDayOfWeek() === Number(t.dayOfWeek) && t.lastReset !== today)
       );
       if (needsReset) { t.status = 'open'; t.lastReset = today; changed = true; }
     });
-    window._rec = obj;
-    if (changed) set(ref(db, 'recurring'), obj).catch(console.error);
+    window._rec = arr;
+    // always re-save as clean indexed object to fix any corrupt format
+    if (changed || (val && !Array.isArray(val))) saveRec();
     renderRecurringIfVisible();
   });
 }
 
 function saveRec() {
-  set(ref(db, 'recurring'), window._rec || {}).catch(console.error);
+  // save as plain object with numeric keys to avoid Firebase array corruption
+  const obj = {};
+  (window._rec || []).forEach((t, i) => { obj[i] = t; });
+  set(ref(db, 'recurring'), obj).catch(console.error);
 }
 
 function renderRecurringIfVisible() {
@@ -75,7 +81,7 @@ function renderRecurringIfVisible() {
 }
 
 function getRecurringForUser(uid) {
-  return Object.values(window._rec || {}).filter(t => t && t.uid === uid);
+  return (window._rec || []).filter(t => t && t.uid === uid);
 }
 
 function addRecurringTask(uid) {
@@ -86,23 +92,20 @@ function addRecurringTask(uid) {
   const type = typeEl ? typeEl.value : 'daily';
   if (!text) return;
   const id = 'r_' + Date.now();
-  if (!window._rec) window._rec = {};
-  window._rec[id] = {
+  if (!window._rec) window._rec = [];
+  window._rec.push({
     id, uid, text, type,
     dayOfWeek: type === 'weekly' && dayEl ? parseInt(dayEl.value) : null,
     status: 'open',
     lastReset: getTodayStr(),
-  };
+  });
   saveRec();
   if (textEl) textEl.value = '';
 }
 
 function findRecByID(id) {
   if (!window._rec) return null;
-  // try direct key first
-  if (window._rec[id]) return window._rec[id];
-  // Firebase may store as array — search by t.id field
-  return Object.values(window._rec).find(t => t && t.id === id) || null;
+  return window._rec.find(t => t && t.id === id) || null;
 }
 
 function recApprove(id) {
@@ -124,9 +127,7 @@ function recReturn(id) {
 
 function recDelete(id) {
   if (!window._rec) return;
-  // find key (may differ from id when Firebase stores as array)
-  const key = window._rec[id] ? id : Object.keys(window._rec).find(k => window._rec[k] && window._rec[k].id === id);
-  if (key !== undefined) delete window._rec[key];
+  window._rec = window._rec.filter(t => t.id !== id);
   saveRec();
   const s = getCurrentScreen();
   if (s === 'admin') renderAdmin(); else renderMember();
@@ -981,7 +982,7 @@ window.sendCollectiveMessage = sendCollectiveMessage;
 window.clearCollectiveMessage = clearCollectiveMessage;
 
 initDarkMode();
-window._rec = {};
+window._rec = [];
 listenToFirebase();
 listenCollectiveMessage();
 listenRecurring();
