@@ -123,21 +123,23 @@ function addRecurringTask(uid) {
 }
 
 function deleteRecurringTask(id) {
-  const recurring = (window._recurring || []).filter(t => t.id !== id);
-  window._recurring = recurring;
-  saveRecurring(recurring);
+  if (!window._recurring) return;
+  window._recurring = window._recurring.filter(t => t.id !== id);
+  saveRecurring(window._recurring);
+  renderAdmin();
 }
 
 function handleRecurringCheck(id, isAdmin) {
-  const recurring = window._recurring || [];
-  const t = recurring.find(x => x.id === id);
-  if (!t || t.status === 'done') return;
-  t.status = 'done';
-  saveRecurring(recurring);
-  // confetti
-  const btn = document.getElementById('rec-chk-' + id);
+  if (!window._recurring) return;
+  const idx = window._recurring.findIndex(x => x.id === id);
+  if (idx === -1) { console.warn('rec check not found:', id); return; }
+  if (window._recurring[idx].status === 'done') return;
+  window._recurring[idx].status = 'done';
+  saveRecurring(window._recurring);
+  // confetti from clicked button
+  const btn = document.querySelector(`.rec-check-btn[data-rec-id="${encodeURIComponent(id)}"]`);
   if (btn) {
-    btn.classList.add('pop');
+    btn.classList.add('pop', 'checked');
     btn.innerHTML = '<i class="ti ti-check"></i>';
     const rect = btn.getBoundingClientRect();
     spawnConfetti(rect.left + rect.width / 2, rect.top + rect.height / 2);
