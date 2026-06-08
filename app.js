@@ -401,6 +401,7 @@ function taskCardHTML(t, uid, isAdmin) {
 
   return `
     <div class="task-card" id="task-${uid}-${t._i}"
+      data-uid="${uid}" data-idx="${t._i}"
       style="${borderStyle}"
       draggable="true"
       ondragstart="onDragStart(event,'${uid}',${t._i})"
@@ -741,6 +742,73 @@ function onDrop(e, uid, targetIdx) {
   dragSrcIndex = null;
   saveTasks();
 }
+
+// ─── TOUCH DRAG (mobile) ──────────────────────────────────────────────────────
+let touchDragEl = null, touchDragUid = null, touchDragIdx = null, touchClone = null;
+
+document.addEventListener('touchstart', e => {
+  const handle = e.target.closest('.drag-handle');
+  if (!handle) return;
+  const card = handle.closest('.task-card');
+  if (!card) return;
+  e.preventDefault();
+
+  // get uid and index from data attributes
+  touchDragIdx = parseInt(card.dataset.idx);
+  touchDragUid = card.dataset.uid;
+  if (!touchDragUid || isNaN(touchDragIdx)) return;
+  touchDragEl = card;
+
+  card.classList.add('dragging');
+
+  // create ghost clone
+  touchClone = card.cloneNode(true);
+  touchClone.style.cssText = `position:fixed;z-index:9999;opacity:0.85;pointer-events:none;width:${card.offsetWidth}px;left:${card.getBoundingClientRect().left}px;top:${card.getBoundingClientRect().top}px;border-radius:14px;box-shadow:0 8px 24px rgba(0,0,0,0.2);`;
+  document.body.appendChild(touchClone);
+}, { passive: false });
+
+document.addEventListener('touchmove', e => {
+  if (!touchDragEl || !touchClone) return;
+  e.preventDefault();
+  const t = e.touches[0];
+  touchClone.style.left = (t.clientX - touchClone.offsetWidth / 2) + 'px';
+  touchClone.style.top  = (t.clientY - 30) + 'px';
+
+  // highlight card under finger
+  touchClone.style.display = 'none';
+  const elBelow = document.elementFromPoint(t.clientX, t.clientY);
+  touchClone.style.display = '';
+  const targetCard = elBelow ? elBelow.closest('.task-card') : null;
+  document.querySelectorAll('.task-card').forEach(c => c.classList.remove('drag-over'));
+  if (targetCard && targetCard !== touchDragEl) targetCard.classList.add('drag-over');
+}, { passive: false });
+
+document.addEventListener('touchend', e => {
+  if (!touchDragEl || !touchClone) return;
+  const t = e.changedTouches[0];
+
+  touchClone.style.display = 'none';
+  const elBelow = document.elementFromPoint(t.clientX, t.clientY);
+  touchClone.style.display = '';
+  const targetCard = elBelow ? elBelow.closest('.task-card') : null;
+
+  if (targetCard && targetCard !== touchDragEl) {
+    const targetIdx = parseInt(targetCard.dataset.idx);
+    const targetUid = targetCard.dataset.uid;
+    if (targetUid && targetUid === touchDragUid && !isNaN(targetIdx) && touchDragIdx !== null && touchDragIdx !== targetIdx) {
+      const [moved] = tasks[touchDragUid].splice(touchDragIdx, 1);
+      tasks[touchDragUid].splice(targetIdx, 0, moved);
+      saveTasks();
+      const s = getCurrentScreen();
+      if (s === 'admin') renderAdmin(); else renderMember();
+    }
+  }
+
+  touchDragEl.classList.remove('dragging');
+  document.querySelectorAll('.task-card').forEach(c => c.classList.remove('drag-over'));
+  touchClone.remove();
+  touchClone = null; touchDragEl = null; touchDragUid = null; touchDragIdx = null;
+});
 
 // ─── COLLECTIVE MESSAGE ──────────────────────────────────────────────────────
 function sendCollectiveMessage() {
