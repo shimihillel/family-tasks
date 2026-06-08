@@ -27,7 +27,7 @@ const DEFAULT_USERS = [
 const EMOJI_OPTIONS = ['👩','👨','🧑','👦','🧒','👧','🧔','👱','🧑‍💻','🧑‍🍳','🧑‍🎨','🧑‍🚀','🦊','🐱','🐶','🦁','🐯','🐻','🌸','⭐'];
 
 // ── שני להחליף לקוד שלך ──
-const ADMIN_PIN = '1705';
+const ADMIN_PIN = '2221';
 
 
 
@@ -402,7 +402,7 @@ function taskCardHTML(t, uid, isAdmin) {
   return `
     <div class="task-card" id="task-${uid}-${t._i}"
       style="${borderStyle}"
-      draggable="${status === 'open' ? 'true' : 'false'}"
+      draggable="true"
       ondragstart="onDragStart(event,'${uid}',${t._i})"
       ondragover="onDragOver(event)"
       ondrop="onDrop(event,'${uid}',${t._i})"
